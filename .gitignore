@@ -1,0 +1,15 @@
+# Generated credentials - NEVER commit these
+evidence/initial-credentials.csv
+evidence/*credentials*
+evidence/*password*
+
+# Fault injection state (machine-specific)
+evidence/fault-state.json
+
+# VM artefacts
+*.qcow2
+*.vhdx
+*.iso
+
+.DS_Store
+Thumbs.db

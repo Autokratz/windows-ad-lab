@@ -1,0 +1,33 @@
+FirstName,LastName,Department,JobTitle,Office
+Amara,Okonkwo,Operations,Operations Manager,Sydney
+Daniel,Petrov,Operations,Dispatch Coordinator,Sydney
+Priya,Raman,Operations,Freight Scheduler,Sydney
+Tom,Ashworth,Operations,Dispatch Coordinator,Melbourne
+Lucia,Ferrante,Operations,Customer Service Lead,Sydney
+Kwame,Mensah,Operations,Freight Scheduler,Brisbane
+Sofia,Marchetti,Operations,Customer Service Officer,Sydney
+Hana,Yilmaz,Warehouse,Warehouse Supervisor,Sydney
+Marcus,Boateng,Warehouse,Forklift Operator,Sydney
+Jin,Watanabe,Warehouse,Inventory Controller,Sydney
+Elena,Vasquez,Warehouse,Pick Packer,Sydney
+Ryan,Doherty,Warehouse,Pick Packer,Melbourne
+Nadia,Haddad,Warehouse,Inventory Controller,Melbourne
+Oliver,Brandt,Warehouse,Forklift Operator,Brisbane
+Grace,Mwangi,Warehouse,Pick Packer,Brisbane
+Ingrid,Solberg,Finance,Finance Manager,Sydney
+Rahul,Chandra,Finance,Accounts Payable Officer,Sydney
+Beatriz,Almeida,Finance,Accounts Receivable Officer,Sydney
+Callum,Reid,Finance,Payroll Officer,Sydney
+Yuki,Tanaka,Finance,Financial Analyst,Melbourne
+Samuel,Adeyemi,IT,IT Manager,Sydney
+Mei,Lin,IT,Systems Administrator,Sydney
+Fatima,Nasser,IT,Service Desk Analyst,Sydney
+Jonah,Kerrigan,IT,Service Desk Analyst,Melbourne
+Anders,Lindqvist,IT,Network Engineer,Sydney
+Chloe,Barrett,Drivers,Line Haul Driver,Sydney
+Dimitri,Volkov,Drivers,Line Haul Driver,Sydney
+Ayesha,Rahman,Drivers,Local Delivery Driver,Sydney
+Pedro,Salgado,Drivers,Local Delivery Driver,Melbourne
+Liam,Gallagher,Drivers,Line Haul Driver,Melbourne
+Zara,Mitchell,Drivers,Local Delivery Driver,Brisbane
+Hugo,Bernard,Drivers,Line Haul Driver,Brisbane
