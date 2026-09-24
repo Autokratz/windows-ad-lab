@@ -38,6 +38,12 @@
     Lab use only. Never point this at a production domain.
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSAvoidUsingConvertToSecureStringWithPlainText', '',
+    Justification = 'This is a deliberately incorrect password used to drive an account past ' +
+                    'the lockout threshold. Failing to authenticate is the entire purpose, so ' +
+                    'there is no credential here to protect.'
+)]
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory)]
@@ -87,7 +93,8 @@ function Invoke-GpoNotApplying {
     param([switch] $Undo)
 
     $gpoName = 'MERIDIAN - Workstation Baseline'
-    $gpo = Get-GPO -Name $gpoName -ErrorAction Stop
+    # Fail fast if the GPO is absent; the object itself is not needed.
+    Get-GPO -Name $gpoName -ErrorAction Stop | Out-Null
 
     if ($Undo) {
         Set-GPPermission -Name $gpoName -TargetName 'Authenticated Users' `
@@ -118,7 +125,8 @@ function Invoke-AccountLockout {
     param([switch] $Undo)
 
     $sam = 'fnasser'
-    $user = Get-ADUser -Identity $sam -Properties LockedOut -ErrorAction Stop
+    # Confirm the account exists before trying to lock it.
+    Get-ADUser -Identity $sam -ErrorAction Stop | Out-Null
 
     if ($Undo) {
         Unlock-ADAccount -Identity $sam

@@ -29,6 +29,13 @@
     Supported. Run it first.
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSAvoidUsingConvertToSecureStringWithPlainText', '',
+    Justification = 'The password is generated in this process and must exist as plaintext ' +
+                    'briefly to be both set on the account and written to the handover CSV. ' +
+                    'It is never read from disk, never logged, and the handover file is ' +
+                    'gitignored. Bulk provisioning has no SecureString-only path.'
+)]
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string] $CsvPath      = (Join-Path $PSScriptRoot '..\data\staff.csv'),
