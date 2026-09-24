@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+
+      # Parse errors and analyser violations are the failures worth catching
+      # here: this repository is developed on Linux, where there is no
+      # PowerShell host to run the scripts against.
+      - name: Analyse
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning `
+            -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions
+
+          if ($results) {
+            $results | Format-Table -AutoSize RuleName, Severity, ScriptName, Line, Message
+            $errors = @($results | Where-Object Severity -eq 'Error')
+            if ($errors.Count -gt 0) {
+              Write-Host "::error::$($errors.Count) analyser error(s)"
+              exit 1
+            }
+            Write-Host "::warning::$($results.Count) analyser warning(s)"
+          } else {
+            Write-Host 'PSScriptAnalyzer: clean'
+          }
+
+      - name: Every script parses
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) {
+              $failed += $_.FullName
+              Write-Host "::error file=$($_.FullName)::$($errors[0].Message)"
+            } else {
+              Write-Host "OK  $($_.Name)"
+            }
+          }
+          if ($failed.Count -gt 0) { exit 1 }
+
+  secrets:
+    name: no credentials committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The user import writes real generated passwords to a handover CSV.
+      # It is gitignored; this job makes sure it stays that way.
+      - name: Credential files must not be tracked
+        run: |
+          if git ls-files | grep -Ei 'credential|password|\.pfx$|\.key$'; then
+            echo "::error::a credential-shaped file is tracked"
+            exit 1
+          fi
+          echo "no credential files tracked"
+
+      - name: No inline plaintext passwords
+        run: |
+          if grep -rInE '(Password|Passwd)\s*=\s*["'"'"'][^"'"'"']{4,}' \
+               --include='*.ps1' --include='*.psm1' . \
+             | grep -viE 'ConvertTo-SecureString|Read-Host|New-InitialPassword|\$pw|\$dsrm'; then
+            echo "::error::hardcoded password literal"
+            exit 1
+          fi
+          echo "no hardcoded passwords"
