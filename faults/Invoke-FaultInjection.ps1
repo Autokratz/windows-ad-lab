@@ -40,9 +40,7 @@
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
     'PSAvoidUsingConvertToSecureStringWithPlainText', '',
-    Justification = 'This is a deliberately incorrect password used to drive an account past ' +
-                    'the lockout threshold. Failing to authenticate is the entire purpose, so ' +
-                    'there is no credential here to protect.'
+    Justification = 'This is a deliberately incorrect password used to drive an account past the lockout threshold. Failing to authenticate is the entire purpose, so there is no credential here to protect.'
 )]
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
