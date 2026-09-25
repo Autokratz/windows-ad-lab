@@ -53,7 +53,7 @@ $root = New-LabOU -Name 'Meridian' -Path $DomainDN
 $ouUsers    = New-LabOU -Name 'Users'           -Path $root
 $ouComputer = New-LabOU -Name 'Computers'       -Path $root
 $ouGroups   = New-LabOU -Name 'Groups'          -Path $root
-$ouSvc      = New-LabOU -Name 'ServiceAccounts' -Path $root
+New-LabOU -Name 'ServiceAccounts' -Path $root | Out-Null
 
 $departments = 'Operations', 'Warehouse', 'Finance', 'IT', 'Drivers'
 foreach ($d in $departments) { New-LabOU -Name $d -Path $ouUsers | Out-Null }

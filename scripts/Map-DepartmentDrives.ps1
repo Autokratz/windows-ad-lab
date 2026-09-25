@@ -22,11 +22,14 @@ param(
 )
 
 $log = Join-Path $env:TEMP 'drive-mapping.log'
-function Write-Log { param($m) "$(Get-Date -Format s)  $m" | Add-Content -Path $log }
+function Write-MapLog { param($m) "$(Get-Date -Format s)  $m" | Add-Content -Path $log }
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $groups = $identity.Groups | ForEach-Object {
-    try { $_.Translate([Security.Principal.NTAccount]).Value } catch { }
+    # A SID with no resolvable account (a deleted group, a well-known SID
+    # with no local name) is normal here and is simply not a group we map on.
+    try { $_.Translate([Security.Principal.NTAccount]).Value }
+    catch { Write-MapLog "unresolved SID $($_.Exception.Message)" }
 }
 
 $maps = @(
@@ -43,7 +46,7 @@ foreach ($m in $maps) {
     $existing = Get-PSDrive -Name $m.Letter -ErrorAction SilentlyContinue
 
     if ($existing -and $existing.DisplayRoot -eq $path) {
-        Write-Log "$($m.Letter): already mapped to $path"
+        Write-MapLog "$($m.Letter): already mapped to $path"
         continue
     }
 
@@ -52,12 +55,12 @@ foreach ($m in $maps) {
             # A stale map to the wrong target is worse than no map, because the
             # user reports "my drive is empty" rather than "my drive is missing".
             Remove-PSDrive -Name $m.Letter -Force -ErrorAction Stop
-            Write-Log "$($m.Letter): removed stale map to $($existing.DisplayRoot)"
+            Write-MapLog "$($m.Letter): removed stale map to $($existing.DisplayRoot)"
         }
         New-PSDrive -Name $m.Letter -PSProvider FileSystem -Root $path -Persist -Scope Global -ErrorAction Stop | Out-Null
-        Write-Log "$($m.Letter): mapped to $path"
+        Write-MapLog "$($m.Letter): mapped to $path"
     }
     catch {
-        Write-Log "$($m.Letter): FAILED mapping $path - $($_.Exception.Message)"
+        Write-MapLog "$($m.Letter): FAILED mapping $path - $($_.Exception.Message)"
     }
 }

@@ -39,6 +39,10 @@
 #>
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSReviewUnusedParameter', 'StatePath',
+    Justification = 'Read by Get-State, Set-State and Clear-State, which resolve it from script scope.'
+)]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
     'PSAvoidUsingConvertToSecureStringWithPlainText', '',
     Justification = 'This is a deliberately incorrect password used to drive an account past the lockout threshold. Failing to authenticate is the entire purpose, so there is no credential here to protect.'
 )]
@@ -161,7 +165,11 @@ function Invoke-AccountLockout {
         try {
             # Any authenticating call works; a directory bind is the cleanest.
             Get-ADUser -Identity $sam -Credential $cred -ErrorAction Stop | Out-Null
-        } catch { }
+        } catch {
+            # The bind is meant to fail. That failure is what increments
+            # badPwdCount, so it is the working part of this loop, not an error.
+            Write-Verbose "expected bind failure: $($_.Exception.Message)"
+        }
         Write-Host "     attempt $i" -ForegroundColor DarkGray
     }
 

@@ -29,17 +29,16 @@ jobs:
           $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning `
             -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions
 
+          # Warnings used to be printed and then ignored, so eight of them sat
+          # in a green build. Anything the analyser reports at Error or Warning
+          # now fails the job; a finding that is genuinely a false positive gets
+          # a SuppressMessageAttribute with a justification, in the script.
           if ($results) {
             $results | Format-Table -AutoSize RuleName, Severity, ScriptName, Line, Message
-            $errors = @($results | Where-Object Severity -eq 'Error')
-            if ($errors.Count -gt 0) {
-              Write-Host "::error::$($errors.Count) analyser error(s)"
-              exit 1
-            }
-            Write-Host "::warning::$($results.Count) analyser warning(s)"
-          } else {
-            Write-Host 'PSScriptAnalyzer: clean'
+            Write-Host "::error::$($results.Count) analyser finding(s)"
+            exit 1
           }
+          Write-Host 'PSScriptAnalyzer: clean'
 
       - name: Every script parses
         shell: pwsh

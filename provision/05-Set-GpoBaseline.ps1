@@ -27,7 +27,7 @@
 param(
     [string] $DomainDN   = (Get-ADDomain).DistinguishedName,
     [string] $DomainName = (Get-ADDomain).DNSRoot,
-    [string] $FileServer = 'DC01'   # passed to the logon script below
+    [string] $FileServer = 'DC01'   # written into scripts.ini as -FileServer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -151,28 +151,28 @@ $logonDir = Join-Path $gpoPath 'Logon'
 New-Item -ItemType Directory -Path $logonDir -Force | Out-Null
 Copy-Item $scriptSource -Destination $logonDir -Force
 
-@'
+@"
 [Logon]
 0CmdLine=Map-DepartmentDrives.ps1
-0Parameters=
-'@ | Set-Content -Path (Join-Path $gpoPath 'scripts.ini') -Encoding ASCII
+0Parameters=-FileServer $FileServer
+"@ | Set-Content -Path (Join-Path $gpoPath 'scripts.ini') -Encoding ASCII
 
 # IsPowershell tells gpscript to invoke it as PowerShell rather than treat it
 # as a legacy script, and the extension GUIDs tell the client this GPO has
 # user-side scripts to process at all.
-Set-Content -Path (Join-Path $gpoPath 'psscripts.ini') -Encoding Unicode -Value @'
+Set-Content -Path (Join-Path $gpoPath 'psscripts.ini') -Encoding Unicode -Value @"
 [Logon]
 0CmdLine=Map-DepartmentDrives.ps1
-0Parameters=
+0Parameters=-FileServer $FileServer
 [ScriptsConfig]
 StartExecutePSFirst=true
-'@
+"@
 
 $gpoDn = "CN={$($m.Id)},CN=Policies,CN=System,$DomainDN"
 Set-ADObject -Identity $gpoDn -Replace @{
     gPCUserExtensionNames = '[{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}]'
 } -ErrorAction Stop
-Write-Ok 'logon script registered through scripts.ini and gPCUserExtensionNames'
+Write-Ok "logon script registered through scripts.ini, mapping shares on $FileServer"
 
 Set-GpoLink -Name $m.DisplayName -Target $ouUsers
 

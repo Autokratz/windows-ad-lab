@@ -23,6 +23,17 @@
     .\Test-DomainHealth.ps1 -Quick        # skip replication and DNS resolution
 #>
 
+# Both parameters below are read inside the -Check scriptblocks passed to
+# Test-Item. PSScriptAnalyzer does not follow a scriptblock to its invocation
+# site, so it reports them as unused.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSReviewUnusedParameter', 'ExpectedDomain',
+    Justification = 'Read inside the -Check scriptblocks, which the analyser does not follow.'
+)]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSReviewUnusedParameter', 'ScopeId',
+    Justification = 'Read inside the -Check scriptblocks, which the analyser does not follow.'
+)]
 [CmdletBinding()]
 param(
     [switch] $Quick,
@@ -220,7 +231,7 @@ Test-Item -Name 'baseline GPOs exist' -FailHint 'run provision\05-Set-GpoBaselin
 
 Test-Item -Name 'every GPO is linked somewhere' -Check {
     $unlinked = Get-GPO -All | Where-Object {
-        ([xml](Get-GPOReport -Guid $_.Id -ReportType Xml)).GPO.LinksTo -eq $null -and
+        $null -eq ([xml](Get-GPOReport -Guid $_.Id -ReportType Xml)).GPO.LinksTo -and
         $_.DisplayName -notmatch 'Default Domain'
     }
     if ($unlinked) { New-CheckResult 'WARN' "unlinked: $((($unlinked).DisplayName) -join ', ')" }
