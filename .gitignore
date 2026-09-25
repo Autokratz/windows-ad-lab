@@ -1,7 +1,23 @@
-# Generated credentials - NEVER commit these
-evidence/initial-credentials.csv
-evidence/*credentials*
-evidence/*password*
+# evidence/ is an allowlist, not a denylist.
+#
+# The previous rules matched on filename, which was wrong in both directions:
+# evidence/password-policy.txt was ignored although it is a legitimate capture,
+# and evidence/handover/initial-credentials.csv was NOT ignored, because * does
+# not cross a directory separator. $HandoverPath is an operator-overridable
+# parameter, so any path outside the guessed patterns wrote 32 plaintext
+# passwords to a tracked file.
+#
+# Everything under evidence/ is ignored unless named here.
+evidence/*
+!evidence/README.md
+!evidence/*.txt
+!evidence/.gitkeep
+
+# Never, under any name or any path
+*credential*
+*password*.csv
+*.pfx
+*.key
 
 # Fault injection state (machine-specific)
 evidence/fault-state.json

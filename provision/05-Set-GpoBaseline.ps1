@@ -27,7 +27,7 @@
 param(
     [string] $DomainDN   = (Get-ADDomain).DistinguishedName,
     [string] $DomainName = (Get-ADDomain).DNSRoot,
-    [string] $FileServer = 'DC01'
+    [string] $FileServer = 'DC01'   # passed to the logon script below
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,16 +66,15 @@ Write-Step 'GPO: workstation security baseline'
 $g = Get-OrNewGpo -Name 'MERIDIAN - Workstation Baseline' `
                   -Comment 'Screen lock, SMB hardening, no removable autorun'
 
-# Lock the screen after 10 minutes idle, and require the password on resume.
+# Lock the screen after 10 minutes idle.
+#
+# The screen-saver trio (ScreenSaveTimeOut / ScreenSaverIsSecure /
+# ScreenSaveActive) is User Configuration and lives under HKCU. Written under
+# HKLM they are inert, and this GPO is linked to computer OUs. The machine
+# inactivity limit is the computer-side control that actually applies here.
 Set-GPRegistryValue -Name $g.DisplayName `
-    -Key 'HKLM\Software\Policies\Microsoft\Windows\Control Panel\Desktop' `
-    -ValueName 'ScreenSaveTimeOut' -Type String -Value '600' | Out-Null
-Set-GPRegistryValue -Name $g.DisplayName `
-    -Key 'HKLM\Software\Policies\Microsoft\Windows\Control Panel\Desktop' `
-    -ValueName 'ScreenSaverIsSecure' -Type String -Value '1' | Out-Null
-Set-GPRegistryValue -Name $g.DisplayName `
-    -Key 'HKLM\Software\Policies\Microsoft\Windows\Control Panel\Desktop' `
-    -ValueName 'ScreenSaveActive' -Type String -Value '1' | Out-Null
+    -Key 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' `
+    -ValueName 'InactivityTimeoutSecs' -Type DWord -Value 600 | Out-Null
 
 # Turn off autorun on every drive type. Still one of the cheapest controls
 # against a USB dropped in a warehouse car park.
@@ -112,7 +111,20 @@ Write-Ok 'control panel, Run, cmd and computer management hidden'
 
 # Apply to the terminals OU, but only for members of the kiosk group, so an
 # IT technician signing in to the same terminal keeps a full desktop.
+# Every setting above is User Configuration, but this GPO is linked to a
+# COMPUTER OU, and user policy is chosen by where the USER object lives. Staff
+# accounts sit under OU=Users, so without loopback none of this applies to
+# anybody and the security filtering below filters a policy that never runs.
+# Merge mode keeps the user's own policy and layers the terminal's on top.
+Set-GPRegistryValue -Name $k.DisplayName `
+    -Key 'HKLM\Software\Policies\Microsoft\Windows\System' `
+    -ValueName 'UserPolicyMode' -Type DWord -Value 1 | Out-Null
+Write-Ok 'loopback processing enabled (merge), so user settings apply per terminal'
+
 Set-GpoLink -Name $k.DisplayName -Target $ouTerminals
+# Loopback is resolved by the computer, so the terminal accounts need Read.
+Set-GPPermission -Name $k.DisplayName -TargetName 'Domain Computers' `
+                 -TargetType Group -PermissionLevel GpoRead | Out-Null
 Set-GPPermission -Name $k.DisplayName -TargetName 'Authenticated Users' `
                  -TargetType Group -PermissionLevel GpoRead -Replace | Out-Null
 Set-GPPermission -Name $k.DisplayName -TargetName 'SEC-KIOSK-LOCKDOWN' `
@@ -124,17 +136,44 @@ Write-Step 'GPO: drive mapping logon script'
 
 $m = Get-OrNewGpo -Name 'MERIDIAN - Drive Mapping' -Comment 'Department share mapping at logon'
 
-$sysvolScripts = "\\$DomainName\SYSVOL\$DomainName\scripts"
-$scriptSource  = Join-Path $PSScriptRoot '..\scripts\Map-DepartmentDrives.ps1'
-if (Test-Path $scriptSource) {
-    Copy-Item $scriptSource -Destination $sysvolScripts -Force
-    Write-Ok "Map-DepartmentDrives.ps1 copied to NETLOGON"
+$scriptSource = Join-Path $PSScriptRoot '..\scripts\Map-DepartmentDrives.ps1'
+if (-not (Test-Path $scriptSource)) {
+    throw "Map-DepartmentDrives.ps1 not found at $scriptSource"
 }
 
-Set-GPRegistryValue -Name $m.DisplayName `
-    -Key 'HKCU\Software\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Logon\0\0' `
-    -ValueName 'Script' -Type String `
-    -Value "$sysvolScripts\Map-DepartmentDrives.ps1" | Out-Null
+# Logon scripts are delivered by the Scripts client-side extension, which reads
+# scripts.ini from the GPO's own User\Scripts folder in SYSVOL. Writing the
+# Scripts key through Set-GPRegistryValue puts it under an unmanaged path, so
+# it tattoos (it survives the GPO being unlinked) and the Scripts extension
+# rewrites it from scripts.ini anyway.
+$gpoPath = "\\$DomainName\SYSVOL\$DomainName\Policies\{$($m.Id)}\User\Scripts"
+$logonDir = Join-Path $gpoPath 'Logon'
+New-Item -ItemType Directory -Path $logonDir -Force | Out-Null
+Copy-Item $scriptSource -Destination $logonDir -Force
+
+@'
+[Logon]
+0CmdLine=Map-DepartmentDrives.ps1
+0Parameters=
+'@ | Set-Content -Path (Join-Path $gpoPath 'scripts.ini') -Encoding ASCII
+
+# IsPowershell tells gpscript to invoke it as PowerShell rather than treat it
+# as a legacy script, and the extension GUIDs tell the client this GPO has
+# user-side scripts to process at all.
+Set-Content -Path (Join-Path $gpoPath 'psscripts.ini') -Encoding Unicode -Value @'
+[Logon]
+0CmdLine=Map-DepartmentDrives.ps1
+0Parameters=
+[ScriptsConfig]
+StartExecutePSFirst=true
+'@
+
+$gpoDn = "CN={$($m.Id)},CN=Policies,CN=System,$DomainDN"
+Set-ADObject -Identity $gpoDn -Replace @{
+    gPCUserExtensionNames = '[{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}]'
+} -ErrorAction Stop
+Write-Ok 'logon script registered through scripts.ini and gPCUserExtensionNames'
+
 Set-GpoLink -Name $m.DisplayName -Target $ouUsers
 
 # ------------------------------------------------------------------------
@@ -178,9 +217,25 @@ Write-Step 'Delegating password reset to Tier 1 helpdesk'
 # unlock actually touches, on the staff subtree only. No Account Operators,
 # no Domain Admins.
 $targetOu = $ouUsers
-& dsacls.exe $targetOu /I:S /G 'MERIDIAN\SEC-HELPDESK-TIER1:CA;Reset Password;user'      | Out-Null
-& dsacls.exe $targetOu /I:S /G 'MERIDIAN\SEC-HELPDESK-TIER1:WP;pwdLastSet;user'          | Out-Null
-& dsacls.exe $targetOu /I:S /G 'MERIDIAN\SEC-HELPDESK-TIER1:WP;lockoutTime;user'         | Out-Null
-Write-Ok 'SEC-HELPDESK-TIER1 may reset passwords and unlock accounts under OU=Users'
+
+# The NetBIOS name comes from the directory. Hardcoding MERIDIAN meant running
+# 01-Install-Forest.ps1 with any other -NetbiosName silently delegated to a
+# principal that does not exist, while still reporting the control as applied.
+$netbios = (Get-ADDomain).NetBIOSName
+$principal = "$netbios\SEC-HELPDESK-TIER1"
+
+# dsacls is a native executable: a non-zero exit does not raise under
+# $ErrorActionPreference = 'Stop', and | Out-Null throws the reason away.
+foreach ($right in @(
+    'CA;Reset Password;user'
+    'WP;pwdLastSet;user'
+    'WP;lockoutTime;user'
+)) {
+    $output = & dsacls.exe $targetOu /I:S /G "${principal}:$right" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "dsacls failed granting '$right' to ${principal}: $output"
+    }
+}
+Write-Ok "$principal may reset passwords and unlock accounts under OU=Users"
 
 Write-Host "`nBaseline policy complete. Run validate\Test-DomainHealth.ps1 next.`n" -ForegroundColor Cyan

@@ -74,6 +74,24 @@ jobs:
           fi
           echo "no credential files tracked"
 
+      # A filename denylist cannot catch a file the operator names themselves,
+      # so check what is actually inside every tracked text file.
+      - name: No generated credentials in any tracked file
+        run: |
+          # A handover file is a CSV whose HEADER names the column. Matching
+          # the identifier anywhere would flag the import script and this
+          # workflow, both of which mention it legitimately.
+          hits=""
+          while IFS= read -r f; do
+            head -n1 "$f" 2>/dev/null | grep -qiE '(^|,)"?InitialPassword"?(,|$)' && hits="$hits$f\n"
+          done < <(git ls-files)
+          if [ -n "$hits" ]; then
+            echo "::error::a tracked file contains generated credentials:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "no generated credentials in tracked files"
+
       - name: No inline plaintext passwords
         run: |
           if grep -rInE '(Password|Passwd)\s*=\s*["'"'"'][^"'"'"']{4,}' \

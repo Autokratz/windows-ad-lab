@@ -97,17 +97,10 @@ Set-DhcpServerv4OptionValue -ScopeId $ScopeId `
                             -DnsDomain  $DomainName
 Write-Ok "options: gateway $Gateway, DNS $DnsServer, domain $DomainName"
 
-# Exclude the static server range so the scope never leases an address that
-# is already pinned to infrastructure.
-$exclusionStart = '10.20.0.1'
-$exclusionEnd   = '10.20.0.99'
-$existingExcl = Get-DhcpServerv4ExclusionRange -ScopeId $ScopeId -ErrorAction SilentlyContinue
-if ($existingExcl | Where-Object { $_.StartRange.IPAddressToString -eq $exclusionStart }) {
-    Write-Skip "exclusion $exclusionStart - $exclusionEnd"
-} else {
-    Add-DhcpServerv4ExclusionRange -ScopeId $ScopeId -StartRange $exclusionStart -EndRange $exclusionEnd
-    Write-Ok "exclusion $exclusionStart - $exclusionEnd (static infrastructure)"
-}
+# No exclusion range is configured. The scope leases .100-.200 and the static
+# infrastructure sits at .1-.99, so the boundary already does the job. An
+# exclusion outside the scope range is dead configuration at best, and Windows
+# DHCP may reject it outright, which under 'Stop' would abort this script.
 
 Restart-Service dhcpserver
 Write-Ok 'DHCP service restarted'

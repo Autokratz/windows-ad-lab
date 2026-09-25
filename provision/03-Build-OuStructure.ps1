@@ -65,9 +65,14 @@ foreach ($d in $departments) { New-LabOU -Name $d -Path $ouUsers | Out-Null }
 Write-Step 'Redirecting default containers'
 # redircmp/redirusr are the supported way to change where unqualified joins
 # and creations land. They are one-shot and safe to re-run.
-& redircmp.exe "OU=Workstations,$ouComputer" | Out-Null
+# Native executables do not raise on a non-zero exit, and | Out-Null discards
+# the reason, so these used to report success whatever happened.
+$out = & redircmp.exe "OU=Workstations,$ouComputer" 2>&1
+if ($LASTEXITCODE -ne 0) { throw "redircmp failed: $out" }
 Write-Ok "new computers -> OU=Workstations,$ouComputer"
-& redirusr.exe $ouUsers | Out-Null
+
+$out = & redirusr.exe $ouUsers 2>&1
+if ($LASTEXITCODE -ne 0) { throw "redirusr failed: $out" }
 Write-Ok "new users -> $ouUsers"
 
 # --- security groups ----------------------------------------------------

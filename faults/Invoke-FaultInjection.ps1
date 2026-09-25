@@ -95,15 +95,24 @@ function Invoke-GpoNotApplying {
     Get-GPO -Name $gpoName -ErrorAction Stop | Out-Null
 
     if ($Undo) {
+        # Restore what was actually there. The default for this GPO is
+        # GpoApply, so restoring GpoRead would leave the baseline still not
+        # applying: gpresult would just change from Denied (Inaccessible) to
+        # Not Applied, which is a subtler version of the same fault.
+        $saved = (Get-State).GpoNotApplying
+        $level = if ($saved -and $saved.PriorLevel) { $saved.PriorLevel } else { 'GpoApply' }
         Set-GPPermission -Name $gpoName -TargetName 'Authenticated Users' `
-                         -TargetType Group -PermissionLevel GpoRead | Out-Null
-        Write-Ok "restored Read for Authenticated Users on '$gpoName'"
+                         -TargetType Group -PermissionLevel $level | Out-Null
+        Write-Ok "restored $level for Authenticated Users on '$gpoName'"
         Clear-State 'GpoNotApplying'
         Write-Hint 'On the client: gpupdate /force, then gpresult /r'
         return
     }
 
-    Set-State 'GpoNotApplying' @{ Gpo = $gpoName; Removed = 'Authenticated Users : GpoRead' }
+    $prior = Get-GPPermission -Name $gpoName -TargetName 'Authenticated Users' `
+                              -TargetType Group -ErrorAction SilentlyContinue
+    $priorLevel = if ($prior) { [string]$prior.Permission } else { 'GpoApply' }
+    Set-State 'GpoNotApplying' @{ Gpo = $gpoName; PriorLevel = $priorLevel }
 
     # Removing Read is subtler than unlinking: the link stays visible in GPMC
     # and the policy still exists, so the obvious checks all look correct.
@@ -185,6 +194,9 @@ function Invoke-DnsMisconfig {
         return
     }
 
+    if ((Get-State).DnsMisconfig) {
+        throw 'DnsMisconfig is already injected. Repair it before injecting again, or the saved resolver is overwritten with the broken one and the original is unrecoverable.'
+    }
     $current = (Get-DnsClientServerAddress -InterfaceAlias $alias -AddressFamily IPv4).ServerAddresses
     Set-State 'DnsMisconfig' @{ Alias = $alias; Servers = $current }
 

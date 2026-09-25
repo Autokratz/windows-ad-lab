@@ -20,7 +20,7 @@ Three things here are meant to be worth something instead:
 
 **1. It is reproducible.** Every script is idempotent and safe to re-run. Tear the VM down, run the five provisioning scripts, and you have a byte-for-byte equivalent domain. Infrastructure that exists only as a sequence of remembered clicks cannot be rebuilt under pressure, and the person who built it is the single point of failure.
 
-**2. It validates itself.** `validate/Test-DomainHealth.ps1` answers 25 questions about the domain with PASS, WARN or FAIL, and exits non-zero on any failure. It exists because the failures that cost the most time are the silent ones — a missing reverse zone, an unauthorised DHCP server, a SYSVOL share that never came back after a reboot. None of those announce themselves. They surface days later as *"Group Policy isn't applying"*, by which point nobody connects it to the change that caused it.
+**2. It validates itself.** `validate/Test-DomainHealth.ps1` answers 27 questions about the domain with PASS, WARN or FAIL, and exits non-zero on any failure. It exists because the failures that cost the most time are the silent ones — a missing reverse zone, an unauthorised DHCP server, a SYSVOL share that never came back after a reboot. None of those announce themselves. They surface days later as *"Group Policy isn't applying"*, by which point nobody connects it to the change that caused it.
 
 **3. It breaks on purpose.** `faults/Invoke-FaultInjection.ps1` injects three real faults and repairs them. Each was chosen because the symptom the user reports points nowhere near the cause.
 
@@ -71,7 +71,7 @@ Full VM setup, including the hypervisor, is in **[docs/LAB-BUILD.md](docs/LAB-BU
 .\provision\04-Import-Users.ps1          # 32 accounts from data/staff.csv
 .\provision\05-Set-GpoBaseline.ps1       # GPOs, fine-grained policy, helpdesk delegation
 
-.\validate\Test-DomainHealth.ps1         # 25 checks, exits 1 on any failure
+.\validate\Test-DomainHealth.ps1         # 27 checks (24 with -Quick), exits 1 on any failure
 .\validate\Get-LabEvidence.ps1           # capture raw state into evidence/
 ```
 
@@ -89,7 +89,7 @@ Then break it:
 
 ```
 provision/    numbered build scripts, each idempotent
-validate/     Test-DomainHealth.ps1 (25 checks) and Get-LabEvidence.ps1
+validate/     Test-DomainHealth.ps1 (27 checks) and Get-LabEvidence.ps1
 faults/       fault injection and repair
 scripts/      Map-DepartmentDrives.ps1, deployed to NETLOGON
 data/         staff.csv, the 32-person import source

@@ -37,7 +37,7 @@
 param(
     [string] $CsvPath      = (Join-Path $PSScriptRoot '..\data\staff.csv'),
     [string] $HandoverPath = (Join-Path $PSScriptRoot '..\evidence\initial-credentials.csv'),
-    [string] $UpnSuffix    = 'meridian.com.au',
+    [string] $UpnSuffix    = 'meridian.example',
     [string] $DomainDN     = (Get-ADDomain).DistinguishedName
 )
 
@@ -51,16 +51,36 @@ function Write-Warn { param($m) Write-Host "   WARN  $m" -ForegroundColor Yellow
 function New-InitialPassword {
     # 16 characters from a set with no ambiguous glyphs, so it can be read
     # aloud over the phone without "was that a one or an ell".
+    #
+    # Get-Random is System.Random, which is not a cryptographic generator.
+    # These are real account passwords, so they come from the CSPRNG and the
+    # shuffle is Fisher-Yates rather than a biased sort-by-random-key.
     $sets = @(
         'ABCDEFGHJKLMNPQRSTUVWXYZ',
         'abcdefghijkmnopqrstuvwxyz',
         '23456789',
         '!#$%&*+-=?'
     )
-    $chars = foreach ($s in $sets) { $s[(Get-Random -Maximum $s.Length)] }   # guarantee each class
+    $rand = { param($n) [System.Security.Cryptography.RandomNumberGenerator]::GetInt32($n) }
+
+    $chars = [System.Collections.Generic.List[char]]::new()
+    foreach ($s in $sets) { $chars.Add($s[(& $rand $s.Length)]) }   # guarantee each class
     $all = -join $sets
-    $chars += 1..12 | ForEach-Object { $all[(Get-Random -Maximum $all.Length)] }
-    -join ($chars | Sort-Object { Get-Random })
+    for ($i = 0; $i -lt 12; $i++) { $chars.Add($all[(& $rand $all.Length)]) }
+
+    for ($i = $chars.Count - 1; $i -gt 0; $i--) {
+        $j = & $rand ($i + 1)
+        $tmp = $chars[$i]; $chars[$i] = $chars[$j]; $chars[$j] = $tmp
+    }
+    -join $chars
+}
+
+function ConvertTo-AdFilterLiteral {
+    # A surname like O'Brien closes the quote in an AD filter string. Left
+    # unescaped the duplicate check silently matches nothing, so every re-run
+    # creates another account and the documented idempotency breaks.
+    param([string] $Value)
+    $Value -replace "'", "''"
 }
 
 function Resolve-SamAccountName {
@@ -83,8 +103,14 @@ if (-not (Test-Path $CsvPath)) { throw "Staff list not found: $CsvPath" }
 $staff = Import-Csv -Path $CsvPath
 Write-Step "Importing $($staff.Count) staff records from $(Split-Path $CsvPath -Leaf)"
 
-$handover = [System.Collections.Generic.List[object]]::new()
-$created = 0; $skipped = 0
+# Written as we go, not at the end. Any failure inside the loop is terminating
+# under $ErrorActionPreference = 'Stop', and a handover flushed only on success
+# is exactly the file you need when the import dies at user 20 of 32.
+$dir = Split-Path $HandoverPath -Parent
+if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+if (Test-Path $HandoverPath) { Remove-Item $HandoverPath }
+
+$created = 0; $skipped = 0; $wrote = 0
 
 foreach ($person in $staff) {
 
@@ -96,9 +122,18 @@ foreach ($person in $staff) {
         continue
     }
 
+    # The group is used after the account is created. Checking it here means a
+    # missing group skips the person instead of aborting mid-import.
+    $group = "SEC-$($person.Department.ToUpper())"
+    if (-not (Get-ADGroup -Filter "Name -eq '$group'" -ErrorAction SilentlyContinue)) {
+        Write-Warn "$display - group $group missing; run 03-Build-OuStructure.ps1 first"
+        continue
+    }
+
     # Match on display name, because the SAM resolver would mint a fresh
     # unique name on a re-run and happily create a duplicate person.
-    if (Get-ADUser -Filter "DisplayName -eq '$display'" -SearchBase $ou -ErrorAction SilentlyContinue) {
+    $displayFilter = ConvertTo-AdFilterLiteral $display
+    if (Get-ADUser -Filter "DisplayName -eq '$displayFilter'" -SearchBase $ou -ErrorAction SilentlyContinue) {
         Write-Skip "$display already exists"
         $skipped++
         continue
@@ -125,15 +160,16 @@ foreach ($person in $staff) {
             -ChangePasswordAtLogon  $true `
             -Enabled                $true
 
-        Add-ADGroupMember -Identity "SEC-$($person.Department.ToUpper())" -Members $sam
+        Add-ADGroupMember -Identity $group -Members $sam
 
-        $handover.Add([pscustomobject]@{
-            DisplayName = $display
-            SamAccount  = $sam
-            UPN         = $upn
-            Department  = $person.Department
+        [pscustomobject]@{
+            DisplayName     = $display
+            SamAccount      = $sam
+            UPN             = $upn
+            Department      = $person.Department
             InitialPassword = $pw
-        })
+        } | Export-Csv -Path $HandoverPath -NoTypeInformation -Encoding UTF8 -Append
+        $wrote++
 
         Write-Ok "$display -> $sam ($($person.Department))"
         $created++
@@ -141,10 +177,7 @@ foreach ($person in $staff) {
 }
 
 # --- handover file ------------------------------------------------------
-if ($handover.Count -gt 0) {
-    $dir = Split-Path $HandoverPath -Parent
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-    $handover | Export-Csv -Path $HandoverPath -NoTypeInformation -Encoding UTF8
+if ($wrote -gt 0) {
     Write-Host "`n   Initial credentials written to $HandoverPath" -ForegroundColor Yellow
     Write-Host "   This file is gitignored. Distribute it, then delete it." -ForegroundColor Yellow
 }
